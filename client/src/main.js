@@ -2,7 +2,7 @@ import './style.css';
 import { io } from 'socket.io-client';
 
 // Config
-const SERVER_URL = 'http://localhost:3000'; // Make sure this matches your server
+const SERVER_URL = window.location.origin;
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -84,6 +84,15 @@ async function joinRoom() {
   setupSocketListeners();
 
   try {
+    // Check for Secure Context (Required for camera/mic on non-localhost)
+    if (!window.isSecureContext && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      throw new Error('This app requires a Secure Context (HTTPS or localhost) to access your camera and microphone. Browsers block media access on insecure HTTP connections.');
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Your browser does not support media devices access or it is blocked by security policies/insecure connection.');
+    }
+
     // Get Media
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     localVideo.srcObject = localStream;
@@ -93,7 +102,7 @@ async function joinRoom() {
     addSystemMessage(`Joined room: ${roomId}`);
   } catch (err) {
     console.error('Error accessing media:', err);
-    alert('Could not access camera/microphone. Please allow permissions.');
+    alert(`Media Error: ${err.message || 'Could not access camera/microphone. Please ensure you have granted permissions and are using a secure connection (HTTPS).'}`);
   }
 }
 
