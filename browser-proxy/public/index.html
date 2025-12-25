@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Proxy</title>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: white; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+        #controls { margin-bottom: 20px; display: flex; gap: 10px; }
+        input { padding: 8px; border-radius: 4px; border: none; min-width: 300px; }
+        button { padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; background: #3b82f6; color: white; }
+        button.stop { background: #ef4444; }
+        #viewport-container { position: relative; border: 2px solid #333; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #viewport { display: block; max-width: 100%; cursor: crosshair; }
+        .status { margin-top: 10px; color: #888; }
+    </style>
+</head>
+<body>
+    <h1>P2P Browser Proxy</h1>
+    
+    <div id="controls">
+        <input type="text" id="url-input" placeholder="Enter P2P Server URL (e.g., http://localhost:2000)" value="http://localhost:2000">
+        <button id="launch-btn">Launch Browser</button>
+        <button id="stop-btn" class="stop">Stop</button>
+    </div>
+
+    <div id="viewport-container">
+        <img id="viewport" src="" alt="Waiting for stream..." />
+    </div>
+    
+    <div class="status" id="status-text">Ready</div>
+
+    <!-- Instructions -->
+    <div style="margin-top:20px; max-width: 600px; text-align: left; background:#333; padding:15px; border-radius:8px;">
+        <h3>How to use:</h3>
+        <p>1. Enter the URL of the P2P application you want to proxy.</p>
+        <p>2. Click <strong>Launch</strong>. The server will start a headless Chromium instance.</p>
+        <p>3. The view below is a live stream. <strong>Clicking</strong> on the image sends clicks to the browser.</p>
+        <p>4. Share this page with your audience so they can watch (read-only if you disable their input permissions in code, currently open).</p>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const viewport = document.getElementById('viewport');
+        const launchBtn = document.getElementById('launch-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const urlInput = document.getElementById('url-input');
+        const statusText = document.getElementById('status-text');
+
+        let isRunning = false;
+
+        // Handle Stream
+        socket.on('frame', (base64) => {
+            viewport.src = `data:image/jpeg;base64,${base64}`;
+            if(!isRunning) {
+                isRunning = true;
+                statusText.textContent = 'Streaming...';
+            }
+        });
+
+        // Controls
+        launchBtn.addEventListener('click', async () => {
+            const url = urlInput.value;
+            statusText.textContent = 'Launching...';
+            try {
+                const res = await fetch('/api/launch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await res.json();
+                if(data.error) throw new Error(data.error);
+                statusText.textContent = 'Browser Launched';
+            } catch (e) {
+                statusText.textContent = 'Error: ' + e.message;
+            }
+        });
+
+        stopBtn.addEventListener('click', async () => {
+            await fetch('/api/close', { method: 'POST' });
+            viewport.src = '';
+            statusText.textContent = 'Stopped';
+            isRunning = false;
+        });
+
+        // Interaction
+        viewport.addEventListener('click', (e) => {
+            if(!isRunning) return;
+            const rect = viewport.getBoundingClientRect();
+            // Calculate relative position based on the displayed size vs the intrinsic buffer size? 
+            // Wait, we set the browser size to 1280x720. 
+            // We need to map the click coordinates.
+            
+            // Simplification: We assume the image fits the container.
+            // Ideally we need the Ratio.
+            // For MVP: Send normalized coordinates or assume visual matches browser.
+            // The browser is 1280x720.
+            
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Percentage
+            const xPct = x / rect.width;
+            const yPct = y / rect.height;
+
+            const browserWidth = 1280;
+            const browserHeight = 720;
+
+            const realX = Math.round(xPct * browserWidth);
+            const realY = Math.round(yPct * browserHeight);
+
+            socket.emit('interaction', { type: 'click', x: realX, y: realY });
+        });
+        
+        // Simple invalid key handler for typing
+        window.addEventListener('keydown', (e) => {
+             if(!isRunning) return;
+             // Don't capture inputs if focused on the URL box
+             if(document.activeElement === urlInput) return;
+             
+             if(e.key.length === 1) {
+                 socket.emit('interaction', { type: 'type', text: e.key });
+             } else {
+                 // Keys like Enter, Backspace
+                 socket.emit('interaction', { type: 'press', key: e.key });
+             }
+        });
+
+    </script>
+</body>
+</html>
