@@ -1,6 +1,6 @@
 {
-  "name": "webrtc-videocall-system",
-  "version": "1.0.0",
+  "name": "@purecore/ninjameeting",
+  "version": "0.1.0",
   "scripts": {
     "install:all": "npm install --prefix client && npm install --prefix server",
     "build:client": "npm run build --prefix client",
